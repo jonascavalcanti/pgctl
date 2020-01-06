@@ -1,0 +1,62 @@
+#!/bin/bash
+##############################
+# Developer: Jonas Cavalcanti
+# ver 1.0                  
+##############################
+
+Time=`date +%H:%M:%S`
+Date=`date +%d-%m-%Y`
+Date2=`date +%Y%j`
+
+FileName="backup-Database"
+Hostname=`hostname`
+
+PathBackup=$1
+AdminEmail=$2
+Log=${PathBackup}/pgsql-db-backup.Log
+
+
+if [ $# != 2 ]
+then
+    echo "Set parameters PathBackup AdminEmail"
+    echo "$0 PathBackup AdminEmail"
+    echo "Ex:. $0 /tmp admin@company.com"
+    exit 1
+fi
+
+
+#Empty file
+touch $Log
+> $Log
+echo "--------------------${Hostname}--------------------" >> $Log
+
+#List all database and run a dump
+for Database in `psql -l -U postgres | cut -f 2 -d " " -s`
+do
+    if [ ${Database} != "template1" -a ${Database} != "template0" -a ${Database} != "postgres" -a ${Database} != "rows)" ]
+    then
+        su - postgres -c "vacuumdb -z -h localhost -U postgres ${Database}" 
+        if [ $? = "0" ]
+        then
+            echo "[SUCCESS] - `date +%H:%M` - VACUUM ${Database}"  >> $Log
+            echo "[START BACKUP] - `date +%H:%M` -  ${Database}" >> $Log
+            if [ ${Database} != "template1" -a ${Database} != "template0" -a ${Database} != "postgres" -a ${Database} != "rows)" ]
+            then
+                su - postgres -c "pg_dump -F c  -f ${PathBackup}/${FileName}-${Database}-${Hostname}-$Date2-[$Date].sql ${Database}"
+                if [ $? = "0" ]
+                then
+                    echo "[SUCCESS] - `date +%H:%M` - BACKUP ${Database}" >> $Log
+                fi
+            fi
+        else
+            echo "[ERROR] -`date +%H:%M` - VACUUM da base ${Database}" >> $Log
+            exit 0
+        fi
+    fi
+done
+if [ $? = "0" ]
+then
+	cat $Log |  mail -s "[SUCCESS] - `date +%H:%M` - BACKUP ${Hostname} " ${AdminEmail}
+else
+	cat $Log |  mail -s "[ERROR] - `date +%H:%M` - BACKUP ${Hostname} " ${AdminEmail}
+fi
